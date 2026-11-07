@@ -1,0 +1,905 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CCAR-F 模擬試験</title>
+<style>
+/*__CSS__*/
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="title">Claude Certified Architect – Foundations 模擬試験</div>
+  <div class="meta">
+    <span id="progress-label" hidden></span>
+    <span id="timer-label" hidden>残り時間</span>
+    <span id="timer" class="timer" hidden role="timer" aria-live="off">--:--:--</span>
+  </div>
+</header>
+
+<div class="toolbar" id="toolbar" hidden>
+  <button class="tool-btn" id="btn-flag" aria-pressed="false" title="ショートカット: M">⚑ 見直しマーク</button>
+  <span class="spacer"></span>
+  <span>文字サイズ</span>
+  <button class="tool-btn" id="btn-font-down" aria-label="文字を小さく">A−</button>
+  <button class="tool-btn" id="btn-font-up" aria-label="文字を大きく">A＋</button>
+</div>
+
+<main id="main">
+  <!-- 開始画面 -->
+  <section id="screen-start" class="sheet intro">
+    <h1>CCAR-F 模擬試験</h1>
+    <p class="sub">Claude Certified Architect – Foundations ／ 全60問・6シナリオ・5領域</p>
+
+    <div id="resume-area" class="notice" hidden></div>
+
+    <h2>モード</h2>
+    <div class="choice-grid">
+      <label class="choice"><input type="radio" name="mode" value="exam" checked>
+        <span><b>本試験モード</b><small>制限時間あり。解答・解説は試験終了後にまとめて表示。見直しマーク・レビュー画面あり。</small></span></label>
+      <label class="choice"><input type="radio" name="mode" value="practice">
+        <span><b>練習モード</b><small>時間制限なし。1問ごとに「解答を確認」で正誤と解説を表示。</small></span></label>
+    </div>
+
+    <div id="exam-settings">
+      <h2>出題範囲</h2>
+      <div class="choice-grid">
+        <label class="choice"><input type="radio" name="scope" value="all" checked>
+          <span><b>全60問（120分）</b><small>6シナリオすべて。問題集の推奨どおりの通し受験。</small></span></label>
+        <label class="choice"><input type="radio" name="scope" value="real">
+          <span><b>本番形式（4シナリオ・40問・80分）</b><small>本番と同様に6シナリオからランダムに4つを出題。1問あたり2分換算。</small></span></label>
+      </div>
+    </div>
+
+    <div id="practice-settings" hidden>
+      <h2>シナリオ</h2>
+      <div class="check-row" id="scenario-checks"></div>
+      <h2>領域</h2>
+      <div class="check-row" id="domain-checks"></div>
+      <h2>オプション</h2>
+      <div class="check-row">
+        <label><input type="checkbox" id="opt-weak"> 前回不正解・未解答の問題のみ</label>
+        <label><input type="checkbox" id="opt-shuffle"> 出題順をシャッフル</label>
+      </div>
+    </div>
+
+    <div class="notice">
+      採点は「完全一致」方式です（複数選択式は指定数の正解をすべて選んだ場合のみ正解）。
+      合格目安は問題集の推奨に合わせて <b>全領域75%以上</b> としています（公式の合格基準ではありません）。
+      キーボード操作: <code>A</code>〜<code>E</code> 選択 ／ <code>←</code><code>→</code> 前後移動 ／ <code>M</code> 見直しマーク ／ <code>Enter</code> 解答確認（練習）
+    </div>
+
+    <div class="actions">
+      <button class="btn" id="btn-start">開始する</button>
+      <a class="btn secondary" href="glossary-quiz.html" style="text-decoration:none">用語問題集へ</a>
+    </div>
+
+    <div id="attempts-area" hidden>
+      <h2>受験履歴（直近10回）</h2>
+      <table class="domain-table" id="attempts-table"></table>
+      <div class="actions"><button class="btn secondary" id="btn-clear-history">学習履歴をリセット</button></div>
+    </div>
+  </section>
+
+  <!-- 問題画面 -->
+  <section id="screen-question" class="sheet" hidden>
+    <div class="q-head">
+      <span class="q-no" id="q-no"></span>
+      <span class="tag" id="q-kind"></span>
+      <span class="tag" id="q-domain"></span>
+      <span class="tag" id="q-flag-tag" hidden style="border-color:var(--flag);color:#7a4800;background:var(--flag-soft)">⚑ 見直しマーク</span>
+    </div>
+    <details class="scenario" id="q-scenario" open>
+      <summary id="q-scenario-title"></summary>
+      <div class="body" id="q-scenario-body"></div>
+    </details>
+    <p class="stem" id="q-stem"></p>
+    <div class="instruction" id="q-instruction" aria-live="polite"></div>
+    <div class="options" id="q-options" role="group"></div>
+    <div id="q-feedback"></div>
+  </section>
+
+  <!-- レビュー画面 -->
+  <section id="screen-review" class="sheet" hidden>
+    <h2 style="margin:0 0 4px;color:var(--bar)">レビュー画面</h2>
+    <div class="review-legend" id="review-summary"></div>
+    <div id="review-list"></div>
+  </section>
+
+  <!-- 結果画面 -->
+  <section id="screen-result" class="sheet" hidden>
+    <h2 style="margin:0 0 14px;color:var(--bar)" id="result-title">試験結果</h2>
+    <div class="score-box">
+      <div class="result" id="result-verdict"></div>
+      <div>
+        <div id="result-score" style="font-size:1.2em;font-weight:700"></div>
+        <div class="detail" id="result-detail"></div>
+      </div>
+    </div>
+    <h3>領域別スコア</h3>
+    <table class="domain-table" id="result-domains"></table>
+    <h3 style="margin-top:24px">シナリオ別スコア</h3>
+    <table class="domain-table" id="result-scenarios"></table>
+    <h3 style="margin-top:24px">問題ごとの解答と解説</h3>
+    <div class="filter-row">
+      <button class="tool-btn" data-filter="all" aria-pressed="true">すべて</button>
+      <button class="tool-btn" data-filter="ng" aria-pressed="false">不正解のみ</button>
+      <button class="tool-btn" data-filter="flag" aria-pressed="false">見直しマークのみ</button>
+    </div>
+    <div class="result-list" id="result-list"></div>
+    <div class="actions">
+      <button class="btn" id="btn-retry-wrong">不正解の問題を練習モードで解き直す</button>
+      <button class="btn secondary" id="btn-home">トップに戻る</button>
+    </div>
+  </section>
+</main>
+
+<footer class="navbar" id="navbar" hidden>
+  <button class="nav-btn" id="btn-review">レビュー画面</button>
+  <button class="nav-btn danger" id="btn-end">試験終了</button>
+  <span class="spacer"></span>
+  <button class="nav-btn" id="btn-prev">◀ 前へ</button>
+  <button class="nav-btn primary" id="btn-check" hidden>解答を確認</button>
+  <button class="nav-btn" id="btn-next">次へ ▶</button>
+</footer>
+
+<dialog id="dlg">
+  <div class="dlg-head" id="dlg-title"></div>
+  <div class="dlg-body" id="dlg-body"></div>
+  <div class="dlg-actions" id="dlg-actions"></div>
+</dialog>
+
+<script>
+const DATA = /*__DATA__*/null;
+
+const PASS_RATE = 0.75;
+const SEC_PER_QUESTION = 120;
+const REAL_SCENARIO_COUNT = 4;
+const WARN_SEC = 300;
+const FONT_MIN = 13;
+const FONT_MAX = 22;
+const KEY = {
+  exam: "ccarf.session.exam",
+  practice: "ccarf.session.practice",
+  history: "ccarf.history",
+  attempts: "ccarf.attempts",
+  font: "ccarf.font",
+};
+
+const byId = Object.fromEntries(DATA.questions.map((q) => [q.qid, q]));
+const scenarioById = Object.fromEntries(DATA.scenarios.map((s) => [s.id, s]));
+const domainById = Object.fromEntries(DATA.domains.map((d) => [d.id, d]));
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => (
+  { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+
+let session = null;
+let timerHandle = null;
+let resultFilter = "all";
+
+/* ---------- 保存 ---------- */
+function load(key, fallback) {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : fallback;
+  } catch (e) {
+    console.warn("localStorage 読み込み失敗", e);
+    return fallback;
+  }
+}
+
+function save(key, value) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch (e) {
+    console.warn("localStorage 保存失敗", e);
+  }
+}
+
+function saveSession() {
+  if (session && !session.temporary) save(KEY[session.mode], session);
+}
+
+/* ---------- 共通 ---------- */
+function isCorrect(q, selected) {
+  const a = [...q.answer].sort().join();
+  const s = [...(selected || [])].sort().join();
+  return a === s;
+}
+
+function shuffle(list) {
+  const arr = [...list];
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+function fmtTime(sec) {
+  const s = Math.max(0, Math.floor(sec));
+  const h = String(Math.floor(s / 3600)).padStart(2, "0");
+  const m = String(Math.floor((s % 3600) / 60)).padStart(2, "0");
+  return `${h}:${m}:${String(s % 60).padStart(2, "0")}`;
+}
+
+function domainShort(id) {
+  return `領域${id}`;
+}
+
+function relatedTerms(qid) {
+  return DATA.glossary
+    .map((g, i) => ({ g, i }))
+    .filter(({ g }) => g.qrefs.includes(qid));
+}
+
+function showScreen(name) {
+  for (const id of ["start", "question", "review", "result"]) {
+    $(`screen-${id}`).hidden = id !== name;
+  }
+  const inSession = name === "question" || name === "review";
+  $("toolbar").hidden = name !== "question";
+  $("navbar").hidden = !inSession;
+  $("progress-label").hidden = !inSession;
+  $("timer").hidden = !inSession;
+  $("timer-label").hidden = !inSession;
+  $("main").scrollTop = 0;
+}
+
+function showDialog(title, bodyHtml, buttons) {
+  const dlg = $("dlg");
+  $("dlg-title").textContent = title;
+  $("dlg-body").innerHTML = bodyHtml;
+  const area = $("dlg-actions");
+  area.innerHTML = "";
+  for (const b of buttons) {
+    const btn = document.createElement("button");
+    btn.className = b.secondary ? "btn secondary" : "btn";
+    btn.textContent = b.label;
+    btn.addEventListener("click", () => {
+      dlg.close();
+      if (b.onClick) b.onClick();
+    });
+    area.appendChild(btn);
+  }
+  dlg.showModal();
+}
+
+/* ---------- 文字サイズ ---------- */
+function applyFont(size) {
+  const fs = Math.min(FONT_MAX, Math.max(FONT_MIN, size));
+  document.documentElement.style.setProperty("--fs", `${fs}px`);
+  save(KEY.font, fs);
+  return fs;
+}
+
+let fontSize = applyFont(load(KEY.font, 16));
+$("btn-font-up").addEventListener("click", () => {
+  fontSize = applyFont(fontSize + 1);
+});
+$("btn-font-down").addEventListener("click", () => {
+  fontSize = applyFont(fontSize - 1);
+});
+
+/* ---------- 開始画面 ---------- */
+function buildStartScreen() {
+  $("scenario-checks").innerHTML = DATA.scenarios.map((s) => `
+    <label><input type="checkbox" name="sc" value="${s.id}" checked>
+    シナリオ${s.id}：${esc(s.title)}</label>`).join("");
+  $("domain-checks").innerHTML = DATA.domains.map((d) => `
+    <label><input type="checkbox" name="dm" value="${d.id}" checked>
+    ${domainShort(d.id)}：${esc(d.name.split("（")[0])}</label>`).join("");
+  document.querySelectorAll('input[name="mode"]').forEach((el) => {
+    el.addEventListener("change", syncModeSettings);
+  });
+  syncModeSettings();
+  renderResume();
+  renderAttempts();
+}
+
+function selectedMode() {
+  return document.querySelector('input[name="mode"]:checked').value;
+}
+
+function syncModeSettings() {
+  const isExam = selectedMode() === "exam";
+  $("exam-settings").hidden = !isExam;
+  $("practice-settings").hidden = isExam;
+}
+
+function renderResume() {
+  const area = $("resume-area");
+  const parts = [];
+  for (const mode of ["exam", "practice"]) {
+    const s = load(KEY[mode], null);
+    if (!s || s.finished) continue;
+    const label = mode === "exam" ? "本試験モード" : "練習モード";
+    const done = Object.keys(s.answers).length;
+    const rest = mode === "exam"
+      ? `・残り ${fmtTime((s.endAt - Date.now()) / 1000)}` : "";
+    parts.push(`<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:4px 0">
+      <span>中断中の${label}：${done}/${s.ids.length}問 解答済み${rest}</span>
+      <button class="tool-btn" data-resume="${mode}">再開する</button>
+      <button class="tool-btn" data-discard="${mode}">破棄</button></div>`);
+  }
+  area.hidden = parts.length === 0;
+  area.innerHTML = parts.join("");
+  area.querySelectorAll("[data-resume]").forEach((b) => {
+    b.addEventListener("click", () => resumeSession(b.dataset.resume));
+  });
+  area.querySelectorAll("[data-discard]").forEach((b) => {
+    b.addEventListener("click", () => {
+      localStorage.removeItem(KEY[b.dataset.discard]);
+      renderResume();
+    });
+  });
+}
+
+function renderAttempts() {
+  const attempts = load(KEY.attempts, []);
+  $("attempts-area").hidden = attempts.length === 0;
+  if (!attempts.length) return;
+  const rows = attempts.slice(-10).reverse().map((a) => `
+    <tr><td>${esc(a.date)}</td><td>${esc(a.label)}</td>
+    <td class="num">${a.correct}/${a.total}</td>
+    <td class="num">${Math.round((a.correct / a.total) * 100)}%</td>
+    <td>${a.pass ? "目安達成" : "目安未達"}</td></tr>`).join("");
+  $("attempts-table").innerHTML = `<tr><th>日時</th><th>形式</th>
+    <th>正答</th><th>正答率</th><th>判定</th></tr>${rows}`;
+}
+
+$("btn-clear-history").addEventListener("click", () => {
+  showDialog("学習履歴のリセット",
+    "受験履歴と、問題ごとの正誤履歴をすべて削除します。よろしいですか？", [
+      { label: "キャンセル", secondary: true },
+      {
+        label: "削除する",
+        onClick: () => {
+          localStorage.removeItem(KEY.attempts);
+          localStorage.removeItem(KEY.history);
+          renderAttempts();
+        },
+      },
+    ]);
+});
+
+function pickExamIds() {
+  const scope = document.querySelector('input[name="scope"]:checked').value;
+  if (scope === "all") return DATA.questions.map((q) => q.qid);
+  const chosen = shuffle(DATA.scenarios.map((s) => s.id))
+    .slice(0, REAL_SCENARIO_COUNT)
+    .sort((a, b) => a - b);
+  return DATA.questions
+    .filter((q) => chosen.includes(q.scenario))
+    .map((q) => q.qid);
+}
+
+function pickPracticeIds() {
+  const checkedValues = (name) => [
+    ...document.querySelectorAll(`input[name="${name}"]:checked`),
+  ].map((el) => Number(el.value));
+  const scenarios = checkedValues("sc");
+  const domains = checkedValues("dm");
+  const history = load(KEY.history, {});
+  let ids = DATA.questions
+    .filter((q) => scenarios.includes(q.scenario))
+    .filter((q) => domains.includes(q.domain))
+    .filter((q) => !$("opt-weak").checked || history[q.qid]?.last !== true)
+    .map((q) => q.qid);
+  if ($("opt-shuffle").checked) ids = shuffle(ids);
+  return ids;
+}
+
+function newSession(mode, ids, temporary) {
+  return {
+    mode,
+    ids,
+    answers: {},
+    flags: {},
+    checked: {},
+    index: 0,
+    startedAt: Date.now(),
+    endAt: mode === "exam"
+      ? Date.now() + ids.length * SEC_PER_QUESTION * 1000 : null,
+    label: mode === "exam"
+      ? `本試験 ${ids.length}問` : `練習 ${ids.length}問`,
+    finished: false,
+    temporary: Boolean(temporary),
+  };
+}
+
+$("btn-start").addEventListener("click", () => {
+  const mode = selectedMode();
+  const ids = mode === "exam" ? pickExamIds() : pickPracticeIds();
+  if (!ids.length) {
+    showDialog("出題できる問題がありません",
+      "条件に合う問題が0問です。シナリオ・領域・オプションを見直してください。",
+      [{ label: "OK" }]);
+    return;
+  }
+  const start = () => beginSession(newSession(mode, ids));
+  const existing = load(KEY[mode], null);
+  if (existing && !existing.finished) {
+    showDialog("中断中のセッションがあります",
+      "新しく開始すると、中断中のセッションは破棄されます。", [
+        { label: "キャンセル", secondary: true },
+        { label: "新しく開始", onClick: start },
+      ]);
+    return;
+  }
+  if (mode === "exam") {
+    showDialog("試験開始の確認",
+      `${ids.length}問・制限時間 ${ids.length * SEC_PER_QUESTION / 60}分 で開始します。<br>
+      時間切れになると自動的に終了し、採点されます。`, [
+        { label: "キャンセル", secondary: true },
+        { label: "試験を開始", onClick: start },
+      ]);
+    return;
+  }
+  start();
+});
+
+function resumeSession(mode) {
+  const s = load(KEY[mode], null);
+  if (!s) return;
+  if (mode === "exam" && s.endAt <= Date.now()) {
+    session = s;
+    finishSession(true);
+    return;
+  }
+  beginSession(s);
+}
+
+function beginSession(s) {
+  session = s;
+  saveSession();
+  clearInterval(timerHandle);
+  timerHandle = setInterval(tick, 1000);
+  tick();
+  const isExam = s.mode === "exam";
+  $("btn-review").hidden = !isExam;
+  $("btn-end").textContent = isExam ? "試験終了" : "練習を終了";
+  $("timer-label").textContent = isExam ? "残り時間" : "経過時間";
+  goTo(s.index);
+}
+
+/* ---------- タイマー ---------- */
+function tick() {
+  if (!session || session.finished) return;
+  if (session.mode === "practice") {
+    $("timer").textContent = fmtTime((Date.now() - session.startedAt) / 1000);
+    return;
+  }
+  const rest = (session.endAt - Date.now()) / 1000;
+  $("timer").textContent = fmtTime(rest);
+  $("timer").classList.toggle("warn", rest <= WARN_SEC);
+  if (rest <= 0) {
+    finishSession(true);
+  }
+}
+
+/* ---------- 問題画面 ---------- */
+function currentQuestion() {
+  return byId[session.ids[session.index]];
+}
+
+function goTo(index) {
+  session.index = Math.min(session.ids.length - 1, Math.max(0, index));
+  saveSession();
+  renderQuestion();
+  showScreen("question");
+}
+
+function renderQuestion() {
+  const q = currentQuestion();
+  const isExam = session.mode === "exam";
+  const locked = Boolean(session.checked[q.qid]);
+  const sc = scenarioById[q.scenario];
+  $("progress-label").textContent =
+    `問題 ${session.index + 1} / ${session.ids.length}`;
+  $("q-no").textContent = `問 ${q.qid}`;
+  $("q-kind").textContent = q.is_multiple
+    ? `複数選択式（${q.pick}つ選択）` : "択一式";
+  $("q-kind").classList.toggle("multi", q.is_multiple);
+  $("q-domain").hidden = isExam;
+  $("q-domain").textContent =
+    `${domainShort(q.domain)}：${domainById[q.domain].name.split("（")[0]}`;
+  $("q-scenario-title").textContent = `シナリオ${sc.id}：${sc.title}`;
+  $("q-scenario-body").innerHTML = sc.description;
+  $("q-stem").innerHTML = q.stem;
+  $("q-instruction").textContent = q.is_multiple
+    ? `正しいものを${q.pick}つ選択してください。`
+    : "正しいものを1つ選択してください。";
+  renderOptions(q, locked);
+  renderFlag(q);
+  $("q-feedback").innerHTML = locked ? explanationHtml(q, true) : "";
+  renderNav(locked);
+}
+
+function renderOptions(q, locked) {
+  const selected = session.answers[q.qid] || [];
+  const type = q.is_multiple ? "checkbox" : "radio";
+  $("q-options").innerHTML = q.options.map((o) => {
+    const isSel = selected.includes(o.key);
+    return `<label class="option ${optionState(q, o.key, isSel, locked)}">
+      <input type="${type}" name="opt" value="${o.key}"
+        ${isSel ? "checked" : ""} ${locked ? "disabled" : ""}>
+      <span class="key">${o.key}.</span>
+      <span class="text">${o.text}</span>
+      <span class="mark">${optionMark(q, o.key, isSel, locked)}</span>
+    </label>`;
+  }).join("");
+  $("q-options").querySelectorAll("input").forEach((el) => {
+    el.addEventListener("change", () => toggleOption(el.value, el));
+  });
+}
+
+function optionState(q, key, isSel, locked) {
+  if (!locked) return isSel ? "selected" : "";
+  const classes = ["locked"];
+  if (q.answer.includes(key)) classes.push("correct");
+  else if (isSel) classes.push("wrong");
+  return classes.join(" ");
+}
+
+function optionMark(q, key, isSel, locked) {
+  if (!locked) return "";
+  if (q.answer.includes(key)) return isSel ? "✓ 正解（選択）" : "✓ 正解";
+  return isSel ? "✗ あなたの選択" : "";
+}
+
+function toggleOption(key, inputEl) {
+  const q = currentQuestion();
+  if (session.checked[q.qid]) return;
+  let selected = [...(session.answers[q.qid] || [])];
+  if (!q.is_multiple) {
+    selected = [key];
+  } else if (selected.includes(key)) {
+    selected = selected.filter((k) => k !== key);
+  } else if (selected.length >= q.pick) {
+    if (inputEl) inputEl.checked = false;
+    $("q-instruction").textContent =
+      `選択できるのは${q.pick}つまでです。選択を外してから選び直してください。`;
+    return;
+  } else {
+    selected.push(key);
+  }
+  if (selected.length) session.answers[q.qid] = selected;
+  else delete session.answers[q.qid];
+  saveSession();
+  renderOptions(q, false);
+  renderNav(false);
+}
+
+function renderFlag(q) {
+  const flagged = Boolean(session.flags[q.qid]);
+  $("btn-flag").setAttribute("aria-pressed", String(flagged));
+  $("q-flag-tag").hidden = !flagged;
+}
+
+function renderNav(locked) {
+  const isPractice = session.mode === "practice";
+  const last = session.index === session.ids.length - 1;
+  const q = currentQuestion();
+  $("btn-prev").disabled = session.index === 0;
+  $("btn-check").hidden = !isPractice || locked;
+  $("btn-check").disabled = !(session.answers[q.qid] || []).length;
+  $("btn-next").hidden = isPractice && !locked;
+  $("btn-next").disabled = last && !isPractice;
+  $("btn-next").textContent = isPractice && last ? "結果を見る ▶" : "次へ ▶";
+  $("btn-next").classList.toggle("primary", isPractice && locked);
+}
+
+function explanationHtml(q, withVerdict) {
+  const selected = session.answers[q.qid] || [];
+  const ok = isCorrect(q, selected);
+  const terms = relatedTerms(q.qid).map(({ g, i }) =>
+    `<a href="glossary-quiz.html#term=${i}" target="_blank" rel="noopener">${g.term}</a>`);
+  const verdict = withVerdict
+    ? `<div class="verdict">${ok ? "✓ 正解" : "✗ 不正解"}</div>` : "";
+  return `<div class="feedback ${ok ? "ok" : "ng"}">
+    ${verdict}
+    <div><b>正解：${q.answer.join(", ")}</b>
+      ${selected.length ? `／ あなたの解答：${selected.join(", ")}` : "／ 未解答"}</div>
+    <h4>解説</h4><p>${q.rationale}</p>
+    ${q.others ? `<h4>他の選択肢</h4><p>${q.others}</p>` : ""}
+    ${terms.length ? `<h4>関連用語（用語問題集で詳しく）</h4>
+      <div class="related">${terms.join("")}</div>` : ""}
+  </div>`;
+}
+
+function checkAnswer() {
+  const q = currentQuestion();
+  if (!(session.answers[q.qid] || []).length || session.checked[q.qid]) return;
+  session.checked[q.qid] = true;
+  recordHistory([q.qid]);
+  saveSession();
+  renderQuestion();
+  $("q-feedback").scrollIntoView({ block: "nearest" });
+}
+
+function recordHistory(qids) {
+  const history = load(KEY.history, {});
+  for (const qid of qids) {
+    const ok = isCorrect(byId[qid], session.answers[qid]);
+    const h = history[qid] || { correct: 0, wrong: 0 };
+    if (ok) h.correct += 1;
+    else h.wrong += 1;
+    h.last = ok;
+    history[qid] = h;
+  }
+  save(KEY.history, history);
+}
+
+$("btn-prev").addEventListener("click", () => goTo(session.index - 1));
+$("btn-next").addEventListener("click", () => {
+  if (session.mode === "practice" && session.index === session.ids.length - 1) {
+    finishSession(false);
+    return;
+  }
+  goTo(session.index + 1);
+});
+$("btn-check").addEventListener("click", checkAnswer);
+$("btn-flag").addEventListener("click", toggleFlag);
+$("btn-review").addEventListener("click", showReview);
+$("btn-end").addEventListener("click", confirmEnd);
+
+function toggleFlag() {
+  const q = currentQuestion();
+  if (session.flags[q.qid]) delete session.flags[q.qid];
+  else session.flags[q.qid] = true;
+  saveSession();
+  renderFlag(q);
+}
+
+/* ---------- レビュー画面 ---------- */
+function showReview() {
+  const total = session.ids.length;
+  const answered = session.ids.filter((id) => session.answers[id]).length;
+  const flagged = session.ids.filter((id) => session.flags[id]).length;
+  $("review-summary").innerHTML = `
+    <span>解答済み：<b>${answered}</b> / ${total}</span>
+    <span>未解答：<b style="color:var(--ng)">${total - answered}</b></span>
+    <span>見直しマーク：<b style="color:var(--flag)">${flagged}</b></span>
+    <span>問題をクリックするとその問題へ移動します。</span>`;
+  const groups = {};
+  session.ids.forEach((id, index) => {
+    const sc = byId[id].scenario;
+    (groups[sc] = groups[sc] || []).push({ id, index });
+  });
+  $("review-list").innerHTML = Object.entries(groups).map(([sc, items]) => `
+    <div class="review-scenario">シナリオ${sc}：${esc(scenarioById[sc].title)}</div>
+    <div class="review-grid">${items.map(reviewItemHtml).join("")}</div>`).join("");
+  $("review-list").querySelectorAll("[data-index]").forEach((b) => {
+    b.addEventListener("click", () => goTo(Number(b.dataset.index)));
+  });
+  $("progress-label").textContent = "レビュー";
+  $("btn-prev").disabled = true;
+  $("btn-next").disabled = true;
+  $("btn-check").hidden = true;
+  showScreen("review");
+}
+
+function reviewItemHtml({ id, index }) {
+  const answered = Boolean(session.answers[id]);
+  const flagged = Boolean(session.flags[id]);
+  const cls = [answered ? "" : "unanswered", flagged ? "flagged" : ""].join(" ");
+  const status = `${flagged ? "⚑ " : ""}${answered ? "解答済" : "未解答"}`;
+  return `<button class="review-item ${cls}" data-index="${index}">
+    <span>問 ${id}</span><span class="st">${status}</span></button>`;
+}
+
+function confirmEnd() {
+  if (session.mode === "practice") {
+    showDialog("練習の終了", "ここまでに「解答を確認」した問題で結果を表示します。", [
+      { label: "キャンセル", secondary: true },
+      { label: "終了する", onClick: () => finishSession(false) },
+    ]);
+    return;
+  }
+  const total = session.ids.length;
+  const unanswered = session.ids.filter((id) => !session.answers[id]).length;
+  const flagged = session.ids.filter((id) => session.flags[id]).length;
+  showDialog("試験終了の確認", `
+    未解答：<b>${unanswered}</b>問 ／ 見直しマーク：<b>${flagged}</b>問（全${total}問）<br>
+    試験を終了すると、解答を変更できません。終了してよろしいですか？`, [
+      { label: "試験に戻る", secondary: true },
+      { label: "終了して採点", onClick: () => finishSession(false) },
+    ]);
+}
+
+/* ---------- 結果 ---------- */
+function finishSession(timeUp) {
+  clearInterval(timerHandle);
+  const s = session;
+  s.finished = true;
+  s.finishedAt = Math.min(Date.now(), s.endAt || Date.now());
+  if (s.mode === "exam") recordHistory(s.ids);
+  if (!s.temporary) localStorage.removeItem(KEY[s.mode]);
+  const scored = scoredIds(s);
+  if (scored.length && !s.temporary) recordAttempt(s, scored);
+  renderResult(scored);
+  showScreen("result");
+  if (timeUp) {
+    showDialog("時間切れ", "制限時間に達したため、試験を終了し採点しました。",
+      [{ label: "OK" }]);
+  }
+}
+
+function scoredIds(s) {
+  return s.mode === "exam" ? s.ids : s.ids.filter((id) => s.checked[id]);
+}
+
+function recordAttempt(s, scored) {
+  const attempts = load(KEY.attempts, []);
+  const correct = scored.filter((id) => isCorrect(byId[id], s.answers[id])).length;
+  attempts.push({
+    date: new Date().toLocaleString("ja-JP"),
+    label: s.label,
+    correct,
+    total: scored.length,
+    pass: passesAll(scored),
+  });
+  save(KEY.attempts, attempts.slice(-50));
+}
+
+function rateBy(scored, keyFn) {
+  const stats = {};
+  for (const id of scored) {
+    const k = keyFn(byId[id]);
+    const st = (stats[k] = stats[k] || { correct: 0, total: 0 });
+    st.total += 1;
+    if (isCorrect(byId[id], session.answers[id])) st.correct += 1;
+  }
+  return stats;
+}
+
+function passesAll(scored) {
+  const stats = rateBy(scored, (q) => q.domain);
+  return Object.values(stats).every((st) => st.correct / st.total >= PASS_RATE);
+}
+
+function renderResult(scored) {
+  const total = scored.length;
+  const correct = scored.filter((id) => isCorrect(byId[id], session.answers[id])).length;
+  const rate = total ? correct / total : 0;
+  const pass = total > 0 && passesAll(scored);
+  const used = (session.finishedAt - session.startedAt) / 1000;
+  $("result-title").textContent =
+    session.mode === "exam" ? "試験結果" : "練習結果";
+  $("result-verdict").textContent = pass ? "目安達成" : "目安未達";
+  $("result-verdict").className = `result ${pass ? "pass" : "fail"}`;
+  $("result-score").textContent =
+    `正答 ${correct} / ${total}問（${Math.round(rate * 100)}%）`;
+  $("result-detail").textContent =
+    `所要時間 ${fmtTime(used)} ／ 判定基準：全領域で正答率75%以上`;
+  $("result-domains").innerHTML = statTable(
+    "領域", rateBy(scored, (q) => q.domain),
+    (k) => `${domainShort(k)}：${esc(domainById[k].name)}`);
+  $("result-scenarios").innerHTML = statTable(
+    "シナリオ", rateBy(scored, (q) => q.scenario),
+    (k) => `シナリオ${k}：${esc(scenarioById[k].title)}`);
+  session.scored = scored;
+  setResultFilter("all");
+  $("btn-retry-wrong").hidden =
+    !scored.some((id) => !isCorrect(byId[id], session.answers[id]));
+}
+
+function statTable(label, stats, nameFn) {
+  const rows = Object.keys(stats).sort((a, b) => a - b).map((k) => {
+    const st = stats[k];
+    const pct = st.correct / st.total;
+    return `<tr><td>${nameFn(k)}</td>
+      <td class="num">${st.correct}/${st.total}</td>
+      <td class="num">${Math.round(pct * 100)}%</td>
+      <td style="width:30%"><div class="bar-track" role="img"
+        aria-label="正答率${Math.round(pct * 100)}%">
+        <div class="bar-fill ${pct < PASS_RATE ? "low" : ""}"
+          style="width:${pct * 100}%"></div>
+        <div class="bar-target" style="left:${PASS_RATE * 100}%"
+          title="目安75%"></div></div></td></tr>`;
+  }).join("");
+  return `<tr><th>${label}</th><th>正答</th><th>正答率</th>
+    <th>グラフ（縦線＝目安75%）</th></tr>${rows}`;
+}
+
+function setResultFilter(filter) {
+  resultFilter = filter;
+  document.querySelectorAll("[data-filter]").forEach((b) => {
+    b.setAttribute("aria-pressed", String(b.dataset.filter === filter));
+  });
+  const ids = session.scored.filter((id) => {
+    if (filter === "ng") return !isCorrect(byId[id], session.answers[id]);
+    if (filter === "flag") return session.flags[id];
+    return true;
+  });
+  $("result-list").innerHTML = ids.length
+    ? ids.map(resultItemHtml).join("")
+    : '<p style="color:var(--muted);padding:8px">該当する問題はありません。</p>';
+}
+
+function resultItemHtml(id) {
+  const q = byId[id];
+  const ok = isCorrect(q, session.answers[id]);
+  const selected = session.answers[id] || [];
+  const preview = q.stem.replace(/<[^>]+>/g, "");
+  const options = q.options.map((o) => {
+    const isSel = selected.includes(o.key);
+    return `<div class="option locked ${optionState(q, o.key, isSel, true)}">
+      <span class="key">${o.key}.</span><span class="text">${o.text}</span>
+      <span class="mark">${optionMark(q, o.key, isSel, true)}</span></div>`;
+  }).join("");
+  return `<details class="${ok ? "ok" : "ng"}">
+    <summary><span class="icon">${ok ? "○" : "×"}</span>
+      <b>問 ${id}</b>${session.flags[id] ? " ⚑" : ""}
+      <span class="tag">${domainShort(q.domain)}</span>
+      <span class="preview">${esc(preview)}</span></summary>
+    <div class="inner"><p class="stem">${q.stem}</p>
+      <div class="options">${options}</div>${explanationHtml(q, false)}</div>
+  </details>`;
+}
+
+document.querySelectorAll("[data-filter]").forEach((b) => {
+  b.addEventListener("click", () => setResultFilter(b.dataset.filter));
+});
+
+$("btn-retry-wrong").addEventListener("click", () => {
+  const wrong = session.scored.filter(
+    (id) => !isCorrect(byId[id], session.answers[id]));
+  beginSession(newSession("practice", wrong));
+});
+
+$("btn-home").addEventListener("click", () => {
+  session = null;
+  location.hash = "";
+  renderResume();
+  renderAttempts();
+  showScreen("start");
+});
+
+/* ---------- キーボード ---------- */
+document.addEventListener("keydown", (e) => {
+  if ($("screen-question").hidden || $("dlg").open) return;
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  const q = currentQuestion();
+  const key = e.key.toUpperCase();
+  const byNumber = { 1: "A", 2: "B", 3: "C", 4: "D", 5: "E" }[e.key];
+  const optKey = byNumber || key;
+  if (q.options.some((o) => o.key === optKey) && key.length === 1) {
+    e.preventDefault();
+    toggleOption(optKey, null);
+  } else if (e.key === "ArrowRight" && !$("btn-next").disabled && !$("btn-next").hidden) {
+    e.preventDefault();
+    $("btn-next").click();
+  } else if (e.key === "ArrowLeft" && !$("btn-prev").disabled) {
+    e.preventDefault();
+    $("btn-prev").click();
+  } else if (key === "M") {
+    toggleFlag();
+  } else if (e.key === "Enter" && session.mode === "practice") {
+    e.preventDefault();
+    if (!session.checked[q.qid]) checkAnswer();
+    else $("btn-next").click();
+  }
+});
+
+window.addEventListener("beforeunload", saveSession);
+
+/* ---------- 起動 ---------- */
+function startFromHash() {
+  const match = location.hash.match(/practice=([\d.,]+)/);
+  if (!match) return false;
+  const ids = match[1].split(",").filter((id) => byId[id]);
+  if (!ids.length) return false;
+  beginSession(newSession("practice", ids, true));
+  return true;
+}
+
+buildStartScreen();
+if (!startFromHash()) showScreen("start");
+window.addEventListener("hashchange", startFromHash);
+</script>
+</body>
+</html>

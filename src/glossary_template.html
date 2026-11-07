@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CCAR-F 用語問題集</title>
+<style>
+/*__CSS__*/
+.tabs { display: flex; gap: 0; border-bottom: 2px solid var(--bar); margin-bottom: 20px; }
+.tab {
+  background: var(--tool); border: 1px solid var(--tool-border); border-bottom: none;
+  padding: 8px 22px; border-radius: var(--radius) var(--radius) 0 0; margin-right: 4px;
+  color: var(--text);
+}
+.tab[aria-selected="true"] { background: var(--bar); color: #fff; border-color: var(--bar); font-weight: 700; }
+.prompt-label { font-size: 0.85em; color: var(--muted); margin-bottom: 4px; }
+.prompt { font-size: 1.25em; font-weight: 700; margin: 0 0 18px; }
+.prompt.long { font-size: 1.05em; font-weight: 400; }
+.term-card { border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 18px; background: #fff; }
+.term-card + .term-card { margin-top: 12px; }
+.term-card h3 { margin: 0 0 2px; font-size: 1.1em; color: var(--bar); }
+.term-card .short { font-weight: 700; margin: 4px 0 8px; }
+.term-card .label { display: inline-block; font-size: 0.78em; font-weight: 700; color: #fff; background: var(--bar-2); border-radius: 3px; padding: 0 6px; margin-right: 6px; }
+.term-card .analogy { background: #fff9e8; border: 1px solid #efdca3; border-radius: var(--radius); padding: 6px 10px; margin-top: 8px; }
+.term-card.highlight { outline: 3px solid #f2b705; }
+.term-card p { margin: 4px 0; }
+.search { width: 100%; padding: 8px 12px; font: inherit; border: 1px solid #9aa4b1; border-radius: var(--radius); margin-bottom: 10px; }
+.count-note { color: var(--muted); font-size: 0.88em; margin: 6px 0 12px; }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="title">CCAR-F 用語問題集</div>
+  <div class="meta">
+    <span id="progress-label" hidden></span>
+    <span id="score-label" hidden></span>
+  </div>
+</header>
+
+<div class="toolbar">
+  <a href="exam.html" class="tool-btn" style="text-decoration:none">模擬試験へ</a>
+  <span class="spacer"></span>
+  <span>文字サイズ</span>
+  <button class="tool-btn" id="btn-font-down" aria-label="文字を小さく">A−</button>
+  <button class="tool-btn" id="btn-font-up" aria-label="文字を大きく">A＋</button>
+</div>
+
+<main id="main">
+  <!-- 開始画面 -->
+  <section id="screen-start" class="sheet intro">
+    <h1>CCAR-F 用語問題集</h1>
+    <p class="sub" id="intro-sub"></p>
+    <div class="tabs" role="tablist">
+      <button class="tab" role="tab" id="tab-quiz" aria-selected="true">クイズ</button>
+      <button class="tab" role="tab" id="tab-list" aria-selected="false">用語一覧（解説）</button>
+    </div>
+
+    <div id="panel-quiz">
+      <h2>出題形式</h2>
+      <div class="choice-grid">
+        <label class="choice"><input type="radio" name="dir" value="t2m" checked>
+          <span><b>用語 → 意味</b><small>用語を見て、正しい意味を4択で選ぶ。</small></span></label>
+        <label class="choice"><input type="radio" name="dir" value="m2t">
+          <span><b>意味 → 用語</b><small>説明を読んで、当てはまる用語を4択で選ぶ。</small></span></label>
+        <label class="choice"><input type="radio" name="dir" value="mix">
+          <span><b>ミックス</b><small>両方の形式をランダムに出題。</small></span></label>
+      </div>
+      <h2>領域</h2>
+      <div class="check-row" id="domain-checks"></div>
+      <h2>問題数</h2>
+      <div class="check-row">
+        <label><input type="radio" name="count" value="10" checked> 10問</label>
+        <label><input type="radio" name="count" value="20"> 20問</label>
+        <label><input type="radio" name="count" value="0"> すべて</label>
+      </div>
+      <h2>オプション</h2>
+      <div class="check-row">
+        <label><input type="checkbox" id="opt-weak"> 前回まちがえた用語・未出題の用語のみ</label>
+      </div>
+      <div class="actions">
+        <button class="btn" id="btn-start">開始する</button>
+      </div>
+    </div>
+
+    <div id="panel-list" hidden>
+      <input class="search" id="search" type="search" placeholder="用語・説明を検索（例：MCP、フック、バッチ）" aria-label="用語を検索">
+      <div class="check-row" id="list-domain-checks"></div>
+      <div class="count-note" id="list-count"></div>
+      <div id="term-list"></div>
+    </div>
+  </section>
+
+  <!-- 出題画面 -->
+  <section id="screen-quiz" class="sheet" hidden>
+    <div class="q-head">
+      <span class="q-no" id="q-no"></span>
+      <span class="tag" id="q-domain"></span>
+      <span class="tag multi" id="q-dir"></span>
+    </div>
+    <div class="prompt-label" id="q-prompt-label"></div>
+    <p class="prompt" id="q-prompt"></p>
+    <div class="instruction">正しいものを1つ選択してください。</div>
+    <div class="options" id="q-options" role="radiogroup"></div>
+    <div id="q-feedback"></div>
+  </section>
+
+  <!-- 結果画面 -->
+  <section id="screen-result" class="sheet" hidden>
+    <h2 style="margin:0 0 14px;color:var(--bar)">クイズ結果</h2>
+    <div class="score-box">
+      <div class="result" id="result-verdict"></div>
+      <div><div id="result-score" style="font-size:1.2em;font-weight:700"></div>
+        <div class="detail">目安：80%以上で「定着」</div></div>
+    </div>
+    <h3 id="wrong-title">まちがえた用語の復習</h3>
+    <div id="wrong-list"></div>
+    <div class="actions">
+      <button class="btn" id="btn-retry">まちがえた用語だけもう一度</button>
+      <button class="btn secondary" id="btn-home">トップに戻る</button>
+    </div>
+  </section>
+</main>
+
+<footer class="navbar" id="navbar" hidden>
+  <button class="nav-btn danger" id="btn-quit">クイズを終了</button>
+  <span class="spacer"></span>
+  <button class="nav-btn primary" id="btn-check">解答を確認</button>
+  <button class="nav-btn primary" id="btn-next" hidden>次へ ▶</button>
+</footer>
+
+<dialog id="dlg">
+  <div class="dlg-head" id="dlg-title"></div>
+  <div class="dlg-body" id="dlg-body"></div>
+  <div class="dlg-actions" id="dlg-actions"></div>
+</dialog>
+
+<script>
+const DATA = /*__DATA__*/null;
+
+const CHOICE_COUNT = 4;
+const MASTERED_RATE = 0.8;
+const FONT_MIN = 13;
+const FONT_MAX = 22;
+const KEYS = ["A", "B", "C", "D"];
+const KEY = { history: "ccarf.glossary.history", font: "ccarf.font" };
+
+const G = DATA.glossary;
+const domainById = Object.fromEntries(DATA.domains.map((d) => [d.id, d]));
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => (
+  { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+const plain = (s) => s.replace(/<[^>]+>/g, "");
+
+let quiz = null;
+
+function load(key, fallback) {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : fallback;
+  } catch (e) {
+    console.warn("localStorage 読み込み失敗", e);
+    return fallback;
+  }
+}
+
+function save(key, value) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch (e) {
+    console.warn("localStorage 保存失敗", e);
+  }
+}
+
+function shuffle(list) {
+  const arr = [...list];
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+function domainName(id) {
+  return `領域${id}：${domainById[id].name.split("（")[0]}`;
+}
+
+function showScreen(name) {
+  for (const id of ["start", "quiz", "result"]) {
+    $(`screen-${id}`).hidden = id !== name;
+  }
+  $("navbar").hidden = name !== "quiz";
+  $("progress-label").hidden = name !== "quiz";
+  $("score-label").hidden = name !== "quiz";
+  $("main").scrollTop = 0;
+}
+
+function showDialog(title, bodyHtml, buttons) {
+  const dlg = $("dlg");
+  $("dlg-title").textContent = title;
+  $("dlg-body").innerHTML = bodyHtml;
+  const area = $("dlg-actions");
+  area.innerHTML = "";
+  for (const b of buttons) {
+    const btn = document.createElement("button");
+    btn.className = b.secondary ? "btn secondary" : "btn";
+    btn.textContent = b.label;
+    btn.addEventListener("click", () => {
+      dlg.close();
+      if (b.onClick) b.onClick();
+    });
+    area.appendChild(btn);
+  }
+  dlg.showModal();
+}
+
+/* ---------- 文字サイズ ---------- */
+function applyFont(size) {
+  const fs = Math.min(FONT_MAX, Math.max(FONT_MIN, size));
+  document.documentElement.style.setProperty("--fs", `${fs}px`);
+  save(KEY.font, fs);
+  return fs;
+}
+
+let fontSize = applyFont(load(KEY.font, 16));
+$("btn-font-up").addEventListener("click", () => { fontSize = applyFont(fontSize + 1); });
+$("btn-font-down").addEventListener("click", () => { fontSize = applyFont(fontSize - 1); });
+
+/* ---------- 用語カード ---------- */
+function termCardHtml(g, index) {
+  const refs = g.qrefs.map((r) =>
+    `<a href="exam.html#practice=${r}" target="_blank" rel="noopener">問 ${r}</a>`).join("");
+  return `<div class="term-card" id="term-${index}">
+    <h3>${g.term}</h3>
+    <span class="tag">${esc(domainName(g.domain))}</span>
+    <p class="short">${g.short}</p>
+    <p><span class="label">やさしい解説</span>${g.explain}</p>
+    <div class="analogy"><span class="label" style="background:#b07d00">たとえると</span>${g.analogy}</div>
+    <p style="margin-top:8px"><span class="label">出てくる問題</span></p>
+    <div class="related">${refs}</div>
+  </div>`;
+}
+
+/* ---------- 開始画面 ---------- */
+function domainChecksHtml(name) {
+  return DATA.domains.map((d) => {
+    const n = G.filter((g) => g.domain === d.id).length;
+    return `<label><input type="checkbox" name="${name}" value="${d.id}" checked>
+      ${esc(domainName(d.id))}（${n}語）</label>`;
+  }).join("");
+}
+
+function checkedDomains(name) {
+  return [...document.querySelectorAll(`input[name="${name}"]:checked`)]
+    .map((el) => Number(el.value));
+}
+
+function selectTab(name) {
+  $("tab-quiz").setAttribute("aria-selected", String(name === "quiz"));
+  $("tab-list").setAttribute("aria-selected", String(name === "list"));
+  $("panel-quiz").hidden = name !== "quiz";
+  $("panel-list").hidden = name !== "list";
+  if (name === "list") renderList();
+}
+
+function renderList() {
+  const words = $("search").value.trim().toLowerCase();
+  const domains = checkedDomains("ldm");
+  const items = G.map((g, i) => ({ g, i })).filter(({ g }) => {
+    if (!domains.includes(g.domain)) return false;
+    if (!words) return true;
+    const text = plain(`${g.term} ${g.short} ${g.explain} ${g.analogy}`).toLowerCase();
+    return text.includes(words);
+  });
+  $("list-count").textContent = `${items.length} / ${G.length} 語を表示`;
+  $("term-list").innerHTML = items.map(({ g, i }) => termCardHtml(g, i)).join("");
+}
+
+$("intro-sub").textContent =
+  `模擬試験60問に登場する重要用語 ${G.length} 語を、初心者向けの解説・たとえ話つきで収録`;
+$("domain-checks").innerHTML = domainChecksHtml("dm");
+$("list-domain-checks").innerHTML = domainChecksHtml("ldm");
+$("tab-quiz").addEventListener("click", () => selectTab("quiz"));
+$("tab-list").addEventListener("click", () => selectTab("list"));
+$("search").addEventListener("input", renderList);
+$("list-domain-checks").addEventListener("change", renderList);
+
+/* ---------- クイズ ---------- */
+function pickPool() {
+  const domains = checkedDomains("dm");
+  const history = load(KEY.history, {});
+  return G.map((g, i) => i)
+    .filter((i) => domains.includes(G[i].domain))
+    .filter((i) => !$("opt-weak").checked || history[plain(G[i].term)] !== true);
+}
+
+function buildItem(index, dir) {
+  const sameDomain = G.map((g, i) => i)
+    .filter((i) => i !== index && G[i].domain === G[index].domain);
+  const others = G.map((g, i) => i)
+    .filter((i) => i !== index && G[i].domain !== G[index].domain);
+  const distractors = [...shuffle(sameDomain), ...shuffle(others)]
+    .slice(0, CHOICE_COUNT - 1);
+  const resolved = dir === "mix" ? (Math.random() < 0.5 ? "t2m" : "m2t") : dir;
+  return {
+    index,
+    dir: resolved,
+    choices: shuffle([index, ...distractors]),
+    selected: null,
+    checked: false,
+  };
+}
+
+function startQuiz(indices, dir) {
+  quiz = {
+    dir,
+    items: indices.map((i) => buildItem(i, dir)),
+    pos: 0,
+  };
+  renderItem();
+  showScreen("quiz");
+}
+
+$("btn-start").addEventListener("click", () => {
+  const pool = shuffle(pickPool());
+  const count = Number(document.querySelector('input[name="count"]:checked').value);
+  const picked = count ? pool.slice(0, count) : pool;
+  if (!picked.length) {
+    showDialog("出題できる用語がありません",
+      "条件に合う用語が0語です。領域やオプションを見直してください。", [{ label: "OK" }]);
+    return;
+  }
+  startQuiz(picked, document.querySelector('input[name="dir"]:checked').value);
+});
+
+function currentItem() {
+  return quiz.items[quiz.pos];
+}
+
+function renderItem() {
+  const item = currentItem();
+  const g = G[item.index];
+  const isT2M = item.dir === "t2m";
+  const correctSoFar = quiz.items.filter((it) => it.checked && it.selected === it.index).length;
+  $("progress-label").textContent = `問題 ${quiz.pos + 1} / ${quiz.items.length}`;
+  $("score-label").textContent = `正解 ${correctSoFar}`;
+  $("q-no").textContent = `第${quiz.pos + 1}問`;
+  $("q-domain").textContent = domainName(g.domain);
+  $("q-dir").textContent = isT2M ? "用語 → 意味" : "意味 → 用語";
+  $("q-prompt-label").textContent = isT2M
+    ? "次の用語の意味として最も適切なものはどれか。"
+    : "次の説明に当てはまる用語はどれか。";
+  $("q-prompt").innerHTML = isT2M ? g.term : g.short;
+  $("q-prompt").classList.toggle("long", !isT2M);
+  renderChoices(item);
+  $("q-feedback").innerHTML = item.checked ? feedbackHtml(item) : "";
+  $("btn-check").hidden = item.checked;
+  $("btn-check").disabled = item.selected === null;
+  $("btn-next").hidden = !item.checked;
+  $("btn-next").textContent =
+    quiz.pos === quiz.items.length - 1 ? "結果を見る ▶" : "次へ ▶";
+}
+
+function renderChoices(item) {
+  const isT2M = item.dir === "t2m";
+  $("q-options").innerHTML = item.choices.map((ci, n) => {
+    const isSel = item.selected === ci;
+    let cls = isSel ? "selected" : "";
+    let mark = "";
+    if (item.checked) {
+      cls = "locked";
+      if (ci === item.index) { cls += " correct"; mark = "✓ 正解"; }
+      else if (isSel) { cls += " wrong"; mark = "✗ あなたの選択"; }
+    }
+    const text = isT2M ? G[ci].short : G[ci].term;
+    const hint = item.checked && ci !== item.index
+      ? `<div style="font-size:0.82em;color:var(--muted)">→ ${isT2M ? G[ci].term : G[ci].short}</div>` : "";
+    return `<label class="option ${cls}">
+      <input type="radio" name="opt" value="${ci}" ${isSel ? "checked" : ""}
+        ${item.checked ? "disabled" : ""}>
+      <span class="key">${KEYS[n]}.</span>
+      <span class="text">${text}${hint}</span>
+      <span class="mark">${mark}</span></label>`;
+  }).join("");
+  $("q-options").querySelectorAll("input").forEach((el) => {
+    el.addEventListener("change", () => choose(Number(el.value)));
+  });
+}
+
+function choose(ci) {
+  const item = currentItem();
+  if (item.checked) return;
+  item.selected = ci;
+  renderChoices(item);
+  $("btn-check").disabled = false;
+}
+
+function feedbackHtml(item) {
+  const ok = item.selected === item.index;
+  return `<div class="feedback ${ok ? "ok" : "ng"}">
+    <div class="verdict">${ok ? "✓ 正解" : "✗ 不正解"}</div>
+    ${termCardHtml(G[item.index], `fb-${item.index}`)}
+  </div>`;
+}
+
+function checkItem() {
+  const item = currentItem();
+  if (item.selected === null || item.checked) return;
+  item.checked = true;
+  const history = load(KEY.history, {});
+  history[plain(G[item.index].term)] = item.selected === item.index;
+  save(KEY.history, history);
+  renderItem();
+  $("q-feedback").scrollIntoView({ block: "nearest" });
+}
+
+function nextItem() {
+  if (quiz.pos === quiz.items.length - 1) {
+    showResult();
+    return;
+  }
+  quiz.pos += 1;
+  renderItem();
+  $("main").scrollTop = 0;
+}
+
+$("btn-check").addEventListener("click", checkItem);
+$("btn-next").addEventListener("click", nextItem);
+$("btn-quit").addEventListener("click", () => {
+  showDialog("クイズの終了", "ここまでに解答した用語で結果を表示します。", [
+    { label: "キャンセル", secondary: true },
+    { label: "終了する", onClick: showResult },
+  ]);
+});
+
+/* ---------- 結果 ---------- */
+function showResult() {
+  const done = quiz.items.filter((it) => it.checked);
+  const wrong = done.filter((it) => it.selected !== it.index);
+  const rate = done.length ? (done.length - wrong.length) / done.length : 0;
+  const mastered = done.length > 0 && rate >= MASTERED_RATE;
+  $("result-verdict").textContent = mastered ? "定着" : "要復習";
+  $("result-verdict").className = `result ${mastered ? "pass" : "fail"}`;
+  $("result-score").textContent =
+    `正解 ${done.length - wrong.length} / ${done.length}問（${Math.round(rate * 100)}%）`;
+  $("wrong-title").hidden = wrong.length === 0;
+  $("wrong-list").innerHTML = wrong.length
+    ? wrong.map((it) => termCardHtml(G[it.index], `w-${it.index}`)).join("")
+    : '<p style="color:var(--muted)">まちがえた用語はありません。</p>';
+  $("btn-retry").hidden = wrong.length === 0;
+  quiz.wrong = wrong.map((it) => it.index);
+  showScreen("result");
+}
+
+$("btn-retry").addEventListener("click", () => startQuiz(shuffle(quiz.wrong), quiz.dir));
+$("btn-home").addEventListener("click", () => {
+  quiz = null;
+  showScreen("start");
+});
+
+/* ---------- キーボード ---------- */
+document.addEventListener("keydown", (e) => {
+  if ($("screen-quiz").hidden || $("dlg").open) return;
+  if (e.ctrlKey || e.metaKey || e.altKey) return;
+  const item = currentItem();
+  const byNumber = { 1: 0, 2: 1, 3: 2, 4: 3 }[e.key];
+  const n = byNumber ?? KEYS.indexOf(e.key.toUpperCase());
+  if (n >= 0 && n < item.choices.length && e.key.length === 1) {
+    e.preventDefault();
+    choose(item.choices[n]);
+  } else if (e.key === "Enter" || e.key === "ArrowRight") {
+    e.preventDefault();
+    if (!item.checked) checkItem();
+    else nextItem();
+  }
+});
+
+/* ---------- 起動 ---------- */
+function openFromHash() {
+  const match = location.hash.match(/term=(\d+)/);
+  if (!match || !G[Number(match[1])]) return;
+  quiz = null;
+  showScreen("start");
+  $("search").value = "";
+  document.querySelectorAll('input[name="ldm"]').forEach((el) => { el.checked = true; });
+  selectTab("list");
+  const card = $(`term-${match[1]}`);
+  card.classList.add("highlight");
+  card.scrollIntoView({ block: "center" });
+}
+
+showScreen("start");
+openFromHash();
+window.addEventListener("hashchange", openFromHash);
+</script>
+</body>
+</html>
