@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>CCAR-F 模擬試験</title>
+<title>CCAR-F</title>
 <style>
 /*__CSS__*/
 </style>
@@ -11,7 +11,7 @@
 <body>
 
 <header class="topbar">
-  <div class="title">Claude Certified Architect – Foundations 模擬試験</div>
+  <div class="title" id="top-title"></div>
   <div class="meta">
     <span id="progress-label" hidden></span>
     <span id="timer-label" hidden>残り時間</span>
@@ -30,8 +30,13 @@
 <main id="main">
   <!-- 開始画面 -->
   <section id="screen-start" class="sheet intro">
-    <h1>CCAR-F 模擬試験</h1>
-    <p class="sub">Claude Certified Architect – Foundations ／ 全60問・6シナリオ・5領域</p>
+    <h1 id="intro-title"></h1>
+    <p class="sub" id="intro-sub"></p>
+
+    <details class="scenario" id="weak-note" hidden>
+      <summary>弱点ノート：試験目標ごとの「判断の決め手」（本番の正答率つき）</summary>
+      <div class="body"><table class="domain-table" id="weak-table"></table></div>
+    </details>
 
     <div id="resume-area" class="notice" hidden></div>
 
@@ -47,9 +52,9 @@
       <h2>出題範囲</h2>
       <div class="choice-grid">
         <label class="choice"><input type="radio" name="scope" value="all" checked>
-          <span><b>全60問（120分）</b><small>6シナリオすべて。問題集の推奨どおりの通し受験。</small></span></label>
+          <span><b id="scope-all-label"></b><small>全シナリオを通しで受験。1問あたり2分換算。</small></span></label>
         <label class="choice"><input type="radio" name="scope" value="real">
-          <span><b>本番形式（4シナリオ・40問・80分）</b><small>本番と同様に6シナリオからランダムに4つを出題。1問あたり2分換算。</small></span></label>
+          <span><b>本番形式（4シナリオをランダム出題）</b><small>本番と同様に6シナリオからランダムに4つを出題。1問あたり2分換算。</small></span></label>
       </div>
     </div>
 
@@ -58,8 +63,13 @@
       <div class="check-row" id="scenario-checks"></div>
       <h2>領域</h2>
       <div class="check-row" id="domain-checks"></div>
+      <div id="objective-filter" hidden>
+        <h2>試験目標 <button class="tool-btn" type="button" id="btn-obj-zero">本番0%の目標だけ</button> <button class="tool-btn" type="button" id="btn-obj-all">すべて</button></h2>
+        <div class="check-row" id="objective-checks"></div>
+      </div>
       <h2>オプション</h2>
       <div class="check-row">
+        <label id="opt-hard-label" hidden><input type="checkbox" id="opt-hard"> 「難」の問題のみ</label>
         <label><input type="checkbox" id="opt-weak"> 前回不正解・未解答の問題のみ</label>
         <label><input type="checkbox" id="opt-shuffle"> 出題順をシャッフル</label>
       </div>
@@ -73,6 +83,7 @@
 
     <div class="actions">
       <button class="btn" id="btn-start">開始する</button>
+      <a class="btn secondary" id="link-other" style="text-decoration:none"></a>
       <a class="btn secondary" href="glossary-quiz.html" style="text-decoration:none">用語問題集へ</a>
     </div>
 
@@ -89,6 +100,8 @@
       <span class="q-no" id="q-no"></span>
       <span class="tag" id="q-kind"></span>
       <span class="tag" id="q-domain"></span>
+      <span class="tag" id="q-difficulty" hidden></span>
+      <span class="tag" id="q-objective" hidden></span>
       <span class="tag" id="q-flag-tag" hidden style="border-color:var(--flag);color:#7a4800;background:var(--flag-soft)">⚑ 見直しマーク</span>
     </div>
     <details class="scenario" id="q-scenario" open>
@@ -120,6 +133,10 @@
     </div>
     <h3>領域別スコア</h3>
     <table class="domain-table" id="result-domains"></table>
+    <div id="result-objectives-area" hidden>
+      <h3 style="margin-top:24px">試験目標別スコア（本番の正答率と比較）</h3>
+      <table class="domain-table" id="result-objectives"></table>
+    </div>
     <h3 style="margin-top:24px">シナリオ別スコア</h3>
     <table class="domain-table" id="result-scenarios"></table>
     <h3 style="margin-top:24px">問題ごとの解答と解説</h3>
@@ -160,13 +177,20 @@ const REAL_SCENARIO_COUNT = 4;
 const WARN_SEC = 300;
 const FONT_MIN = 13;
 const FONT_MAX = 22;
+const META = DATA.meta;
 const KEY = {
-  exam: "ccarf.session.exam",
-  practice: "ccarf.session.practice",
-  history: "ccarf.history",
-  attempts: "ccarf.attempts",
+  exam: `${META.storage_key}.session.exam`,
+  practice: `${META.storage_key}.session.practice`,
+  history: `${META.storage_key}.history`,
+  attempts: `${META.storage_key}.attempts`,
   font: "ccarf.font",
 };
+const OTHER_SET = META.output === "exam.html"
+  ? { href: "remedial.html", label: "弱点対策問題集へ" }
+  : { href: "exam.html", label: "模擬試験へ" };
+const objectiveById = Object.fromEntries(
+  (DATA.objectives || []).map((o) => [o.id, o]));
+const HAS_OBJECTIVES = DATA.objectives.length > 0;
 
 const byId = Object.fromEntries(DATA.questions.map((q) => [q.qid, q]));
 const scenarioById = Object.fromEntries(DATA.scenarios.map((s) => [s.id, s]));
@@ -232,7 +256,7 @@ function domainShort(id) {
 function relatedTerms(qid) {
   return DATA.glossary
     .map((g, i) => ({ g, i }))
-    .filter(({ g }) => g.qrefs.includes(qid));
+    .filter(({ g }) => (g[META.ref_field] || []).includes(qid));
 }
 
 function showScreen(name) {
@@ -294,9 +318,51 @@ function buildStartScreen() {
   document.querySelectorAll('input[name="mode"]').forEach((el) => {
     el.addEventListener("change", syncModeSettings);
   });
+  buildHeader();
+  if (HAS_OBJECTIVES) buildObjectiveUi();
   syncModeSettings();
   renderResume();
   renderAttempts();
+}
+
+function buildHeader() {
+  const total = DATA.questions.length;
+  document.title = META.title;
+  $("top-title").textContent = META.title;
+  $("intro-title").textContent = META.title;
+  $("intro-sub").textContent =
+    `${META.subtitle} ／ 全${total}問・${DATA.scenarios.length}シナリオ`;
+  $("scope-all-label").textContent =
+    `全${total}問（${total * SEC_PER_QUESTION / 60}分）`;
+  $("link-other").href = OTHER_SET.href;
+  $("link-other").textContent = OTHER_SET.label;
+}
+
+function questionCountFor(objectiveId) {
+  return DATA.questions.filter((q) => q.objective === objectiveId).length;
+}
+
+function buildObjectiveUi() {
+  $("weak-note").hidden = false;
+  $("objective-filter").hidden = false;
+  $("opt-hard-label").hidden = false;
+  $("weak-table").innerHTML = `<tr><th>ID</th><th>本番</th>
+    <th>試験目標</th><th>判断の決め手</th><th>問題数</th></tr>` +
+    DATA.objectives.map((o) => `<tr><td>${o.id}</td>
+      <td class="num" style="color:${o.score === 0 ? "var(--ng)" : "inherit"}">${o.score}%</td>
+      <td>${o.text}</td><td>${o.tip}</td>
+      <td class="num">${questionCountFor(o.id)}問</td></tr>`).join("");
+  $("objective-checks").innerHTML = DATA.objectives.map((o) => `
+    <label title="${esc(o.text.replace(/<[^>]+>/g, ""))}">
+      <input type="checkbox" name="ob" value="${o.id}" checked>
+      ${o.id}（本番${o.score}%）</label>`).join("");
+  const setChecks = (predicate) => {
+    document.querySelectorAll('input[name="ob"]').forEach((el) => {
+      el.checked = predicate(objectiveById[el.value]);
+    });
+  };
+  $("btn-obj-zero").addEventListener("click", () => setChecks((o) => o.score === 0));
+  $("btn-obj-all").addEventListener("click", () => setChecks(() => true));
 }
 
 function selectedMode() {
@@ -386,10 +452,19 @@ function pickPracticeIds() {
   let ids = DATA.questions
     .filter((q) => scenarios.includes(q.scenario))
     .filter((q) => domains.includes(q.domain))
+    .filter(matchesObjectiveFilters)
     .filter((q) => !$("opt-weak").checked || history[q.qid]?.last !== true)
     .map((q) => q.qid);
   if ($("opt-shuffle").checked) ids = shuffle(ids);
   return ids;
+}
+
+function matchesObjectiveFilters(q) {
+  if (!HAS_OBJECTIVES) return true;
+  const objectives = [...document.querySelectorAll('input[name="ob"]:checked')]
+    .map((el) => el.value);
+  if (!objectives.includes(q.objective)) return false;
+  return !$("opt-hard").checked || q.difficulty === "難";
 }
 
 function newSession(mode, ids, temporary) {
@@ -506,6 +581,12 @@ function renderQuestion() {
   $("q-domain").hidden = isExam;
   $("q-domain").textContent =
     `${domainShort(q.domain)}：${domainById[q.domain].name.split("（")[0]}`;
+  $("q-difficulty").hidden = isExam || !q.difficulty;
+  $("q-difficulty").textContent = `難易度：${q.difficulty}`;
+  $("q-difficulty").classList.toggle("multi", q.difficulty === "難");
+  $("q-objective").hidden = isExam || !q.objective;
+  $("q-objective").textContent = q.objective
+    ? `目標${q.objective}（本番${objectiveById[q.objective].score}%）` : "";
   $("q-scenario-title").textContent = `シナリオ${sc.id}：${sc.title}`;
   $("q-scenario-body").innerHTML = sc.description;
   $("q-stem").innerHTML = q.stem;
@@ -592,6 +673,14 @@ function renderNav(locked) {
   $("btn-next").classList.toggle("primary", isPractice && locked);
 }
 
+function objectiveHtml(q) {
+  const o = objectiveById[q.objective];
+  if (!o) return "";
+  return `<h4>試験目標 ${o.id}（本番の正答率 ${o.score}%）</h4>
+    <p style="font-size:0.92em;color:var(--muted)">${o.text}</p>
+    <p><b>判断の決め手：</b>${o.tip}</p>`;
+}
+
 function explanationHtml(q, withVerdict) {
   const selected = session.answers[q.qid] || [];
   const ok = isCorrect(q, selected);
@@ -605,6 +694,7 @@ function explanationHtml(q, withVerdict) {
       ${selected.length ? `／ あなたの解答：${selected.join(", ")}` : "／ 未解答"}</div>
     <h4>解説</h4><p>${q.rationale}</p>
     ${q.others ? `<h4>他の選択肢</h4><p>${q.others}</p>` : ""}
+    ${objectiveHtml(q)}
     ${terms.length ? `<h4>関連用語（用語問題集で詳しく）</h4>
       <div class="related">${terms.join("")}</div>` : ""}
   </div>`;
@@ -781,6 +871,8 @@ function renderResult(scored) {
   $("result-scenarios").innerHTML = statTable(
     "シナリオ", rateBy(scored, (q) => q.scenario),
     (k) => `シナリオ${k}：${esc(scenarioById[k].title)}`);
+  $("result-objectives-area").hidden = !HAS_OBJECTIVES;
+  if (HAS_OBJECTIVES) $("result-objectives").innerHTML = objectiveTable(scored);
   session.scored = scored;
   setResultFilter("all");
   $("btn-retry-wrong").hidden =
@@ -802,6 +894,27 @@ function statTable(label, stats, nameFn) {
           title="目安75%"></div></div></td></tr>`;
   }).join("");
   return `<tr><th>${label}</th><th>正答</th><th>正答率</th>
+    <th>グラフ（縦線＝目安75%）</th></tr>${rows}`;
+}
+
+function objectiveTable(scored) {
+  const stats = rateBy(scored, (q) => q.objective);
+  const rows = DATA.objectives.filter((o) => stats[o.id]).map((o) => {
+    const st = stats[o.id];
+    const pct = st.correct / st.total;
+    const diff = Math.round(pct * 100) - o.score;
+    const sign = diff > 0 ? "+" : "";
+    return `<tr><td title="${esc(o.text.replace(/<[^>]+>/g, ""))}">${o.id}
+        <div style="font-size:0.8em;color:var(--muted)">${o.text}</div></td>
+      <td class="num">${o.score}%</td>
+      <td class="num">${st.correct}/${st.total}（${Math.round(pct * 100)}%）</td>
+      <td class="num" style="color:${diff >= 0 ? "var(--ok)" : "var(--ng)"}">${sign}${diff}</td>
+      <td style="width:22%"><div class="bar-track" role="img"
+        aria-label="正答率${Math.round(pct * 100)}%">
+        <div class="bar-fill ${pct < PASS_RATE ? "low" : ""}" style="width:${pct * 100}%"></div>
+        <div class="bar-target" style="left:${PASS_RATE * 100}%"></div></div></td></tr>`;
+  }).join("");
+  return `<tr><th>試験目標</th><th>本番</th><th>今回</th><th>差</th>
     <th>グラフ（縦線＝目安75%）</th></tr>${rows}`;
 }
 
@@ -835,6 +948,8 @@ function resultItemHtml(id) {
     <summary><span class="icon">${ok ? "○" : "×"}</span>
       <b>問 ${id}</b>${session.flags[id] ? " ⚑" : ""}
       <span class="tag">${domainShort(q.domain)}</span>
+      ${q.objective ? `<span class="tag">${q.objective}</span>` : ""}
+      ${q.difficulty === "難" ? '<span class="tag multi">難</span>' : ""}
       <span class="preview">${esc(preview)}</span></summary>
     <div class="inner"><p class="stem">${q.stem}</p>
       <div class="options">${options}</div>${explanationHtml(q, false)}</div>

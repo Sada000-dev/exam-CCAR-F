@@ -40,6 +40,7 @@
 
 <div class="toolbar">
   <a href="exam.html" class="tool-btn" style="text-decoration:none">模擬試験へ</a>
+  <a href="remedial.html" class="tool-btn" style="text-decoration:none">弱点対策問題集へ</a>
   <span class="spacer"></span>
   <span>文字サイズ</span>
   <button class="tool-btn" id="btn-font-down" aria-label="文字を小さく">A−</button>
@@ -228,8 +229,13 @@ $("btn-font-down").addEventListener("click", () => { fontSize = applyFont(fontSi
 
 /* ---------- 用語カード ---------- */
 function termCardHtml(g, index) {
-  const refs = g.qrefs.map((r) =>
-    `<a href="exam.html#practice=${r}" target="_blank" rel="noopener">問 ${r}</a>`).join("");
+  const refs = [
+    ...g.qrefs.map((r) =>
+      `<a href="exam.html#practice=${r}" target="_blank" rel="noopener">模試 問 ${r}</a>`),
+    ...g.rrefs.map((r) =>
+      `<a href="remedial.html#practice=${r}" target="_blank" rel="noopener"
+        style="background:var(--flag-soft);border-color:#e3b76a;color:#7a4800">対策 問 ${r}</a>`),
+  ].join("");
   return `<div class="term-card" id="term-${index}">
     <h3>${g.term}</h3>
     <span class="tag">${esc(domainName(g.domain))}</span>
@@ -277,7 +283,7 @@ function renderList() {
 }
 
 $("intro-sub").textContent =
-  `模擬試験60問に登場する重要用語 ${G.length} 語を、初心者向けの解説・たとえ話つきで収録`;
+  `模擬試験と弱点対策問題集に登場する重要用語 ${G.length} 語を、初心者向けの解説・たとえ話つきで収録`;
 $("domain-checks").innerHTML = domainChecksHtml("dm");
 $("list-domain-checks").innerHTML = domainChecksHtml("ldm");
 $("tab-quiz").addEventListener("click", () => selectTab("quiz"));

@@ -1,7 +1,7 @@
 """CCAR-F 問題集 Markdown から試験 HTML と用語クイズ HTML を生成する。
 
 使い方:
-    python -I build.py <CCAR-F問題集.md のパス>
+    python -I build.py <CCAR-F問題集.md> <CCAR-F対策問題集.md>
 """
 
 import html
@@ -15,28 +15,59 @@ SRC_DIR = Path(__file__).resolve().parent
 OUT_DIR = SRC_DIR.parent
 GLOSSARY_PATH = SRC_DIR / "glossary.json"
 CSS_PATH = SRC_DIR / "common.css"
-TEMPLATES = {
-    "exam_template.html": "exam.html",
-    "glossary_template.html": "glossary-quiz.html",
-}
+EXAM_TEMPLATE = "exam_template.html"
+GLOSSARY_TEMPLATE = "glossary_template.html"
+GLOSSARY_OUTPUT = "glossary-quiz.html"
 DATA_PLACEHOLDER = "/*__DATA__*/null"
 CSS_PLACEHOLDER = "/*__CSS__*/"
 
 ANSWER_SECTION_HEADING = "# 解答と解説"
 OTHER_OPTIONS_PREFIX = "他の選択肢："
-EXPECTED_QUESTION_COUNT = 60
 
 DOMAIN_ROW_RE = re.compile(
     r"^\|\s*(\d)\s*\|\s*(.+?)\s*\|\s*(\d+)%\s*\|\s*(\d+)問\s*\|$"
 )
+OBJECTIVE_ROW_RE = re.compile(
+    r"^\|\s*(W\d+)\s*\|\s*(\d+)%\s*\|\s*(.+?)\s*\|\s*(.+?)\s*\|$"
+)
 SCENARIO_RE = re.compile(r"^## シナリオ(\d+)：(.+)$")
 QUESTION_RE = re.compile(
-    r"^### 問 (\d+\.\d+) ・(択一式|複数選択式)・(\d)つ選択・領域(\d)$"
+    r"^### 問 (\d+\.\d+) ・(択一式|複数選択式)・(\d)つ選択・領域(\d)"
+    r"(?:・目標(W\d+))?(?:・(標準|難))?$"
 )
 OPTION_RE = re.compile(r"^([A-E])\. (.+)$")
 ANSWER_RE = re.compile(r"^\*\*(\d+\.\d+) — 正解：([A-E, ]+)\*\*$")
 CODE_RE = re.compile(r"`([^`]+)`")
 BOLD_RE = re.compile(r"\*\*(.+?)\*\*")
+
+
+@dataclass(frozen=True)
+class QuestionSet:
+    """出力する問題集1つ分の設定。"""
+
+    output: str
+    storage_key: str
+    title: str
+    subtitle: str
+    ref_field: str
+
+
+QUESTION_SETS = (
+    QuestionSet(
+        output="exam.html",
+        storage_key="ccarf",
+        title="CCAR-F 模擬試験",
+        subtitle="Claude Certified Architect – Foundations",
+        ref_field="qrefs",
+    ),
+    QuestionSet(
+        output="remedial.html",
+        storage_key="ccarf.remedial",
+        title="CCAR-F 弱点対策問題集",
+        subtitle="スコアレポート（2026-11-09・627点）の弱点目標に特化・難しめ",
+        ref_field="rrefs",
+    ),
+)
 
 
 @dataclass
@@ -48,6 +79,8 @@ class Question:
     domain: int
     pick: int
     is_multiple: bool
+    objective: str = ""
+    difficulty: str = ""
     stem: str = ""
     options: list[dict[str, str]] = field(default_factory=list)
     answer: list[str] = field(default_factory=list)
@@ -78,6 +111,22 @@ def parse_domains(lines: list[str]) -> list[dict]:
     return domains
 
 
+def parse_objectives(lines: list[str]) -> list[dict]:
+    """試験目標の表（ID・本番の正答率・目標・決め手）を取り出す。"""
+    objectives = []
+    for line in lines:
+        match = OBJECTIVE_ROW_RE.match(line.strip())
+        if match:
+            objective_id, score, text, tip = match.groups()
+            objectives.append({
+                "id": objective_id,
+                "score": int(score),
+                "text": to_html(text),
+                "tip": to_html(tip),
+            })
+    return objectives
+
+
 def parse_scenarios(lines: list[str]) -> list[dict]:
     """シナリオ見出しと、その直後の説明段落を取り出す。"""
     scenarios = []
@@ -102,13 +151,15 @@ def parse_questions(lines: list[str]) -> list[Question]:
     for line in lines:
         header = QUESTION_RE.match(line)
         if header:
-            qid, kind, pick, domain = header.groups()
+            qid, kind, pick, domain, objective, difficulty = header.groups()
             questions.append(Question(
                 qid=qid,
                 scenario=int(qid.split(".")[0]),
                 domain=int(domain),
                 pick=int(pick),
                 is_multiple=(kind == "複数選択式"),
+                objective=objective or "",
+                difficulty=difficulty or "",
             ))
             continue
         if not questions or not line.strip() or line.startswith("#"):
@@ -144,7 +195,7 @@ def attach_answers(lines: list[str], questions: list[Question]) -> None:
             ]
             continue
         text = line.strip()
-        if current is None or not text or text.startswith(("#", "---")):
+        if current is None or not text or text.startswith(("#", "---", "*")):
             continue
         if text.startswith(OTHER_OPTIONS_PREFIX):
             current.others = to_html(text[len(OTHER_OPTIONS_PREFIX):])
@@ -152,10 +203,12 @@ def attach_answers(lines: list[str], questions: list[Question]) -> None:
             current.rationale += to_html(text)
 
 
-def validate(questions: list[Question]) -> None:
+def validate(
+    questions: list[Question], expected: int, objective_ids: set[str]
+) -> None:
     """解析漏れがあれば例外で止める（不完全な HTML を出さないため）。"""
-    if len(questions) != EXPECTED_QUESTION_COUNT:
-        raise ValueError(f"問題数が {len(questions)} 件です")
+    if len(questions) != expected:
+        raise ValueError(f"問題数が {len(questions)} 件（期待 {expected}）")
     for question in questions:
         problems = []
         if not question.stem:
@@ -167,8 +220,33 @@ def validate(questions: list[Question]) -> None:
         keys = {option["key"] for option in question.options}
         if not set(question.answer) <= keys:
             problems.append("正解が選択肢にない")
+        if objective_ids and question.objective not in objective_ids:
+            problems.append("試験目標が未定義")
         if problems:
             raise ValueError(f"問 {question.qid}: {', '.join(problems)}")
+
+
+def parse_question_set(markdown_path: Path) -> dict:
+    """問題集 Markdown 1冊分を解析して検証済みのデータを返す。"""
+    lines = markdown_path.read_text(encoding="utf-8").splitlines()
+    split_at = lines.index(ANSWER_SECTION_HEADING)
+    question_lines, answer_lines = lines[:split_at], lines[split_at:]
+
+    domains = parse_domains(question_lines)
+    objectives = parse_objectives(question_lines)
+    questions = parse_questions(question_lines)
+    attach_answers(answer_lines, questions)
+    validate(
+        questions,
+        sum(domain["count"] for domain in domains),
+        {objective["id"] for objective in objectives},
+    )
+    return {
+        "domains": domains,
+        "objectives": objectives,
+        "scenarios": parse_scenarios(question_lines),
+        "questions": [asdict(question) for question in questions],
+    }
 
 
 def load_glossary() -> list[dict]:
@@ -178,6 +256,8 @@ def load_glossary() -> list[dict]:
     for entry in entries:
         for key in text_keys:
             entry[key] = to_html(entry[key])
+        entry.setdefault("qrefs", [])
+        entry.setdefault("rrefs", [])
     return entries
 
 
@@ -192,28 +272,31 @@ def render(template_name: str, data: dict, css: str) -> str:
     )
 
 
-def main(markdown_path: Path) -> None:
-    """Markdown を解析して2つの HTML を出力する。"""
-    lines = markdown_path.read_text(encoding="utf-8").splitlines()
-    split_at = lines.index(ANSWER_SECTION_HEADING)
-    question_lines, answer_lines = lines[:split_at], lines[split_at:]
+def write_output(name: str, content: str) -> None:
+    """生成した HTML を出力ディレクトリに書き出す。"""
+    output = OUT_DIR / name
+    output.write_text(content, encoding="utf-8")
+    print(f"生成: {output}")
 
-    questions = parse_questions(question_lines)
-    attach_answers(answer_lines, questions)
-    validate(questions)
 
-    data = {
-        "domains": parse_domains(question_lines),
-        "scenarios": parse_scenarios(question_lines),
-        "questions": [asdict(question) for question in questions],
-        "glossary": load_glossary(),
-    }
+def main(markdown_paths: list[Path]) -> None:
+    """各問題集と用語集から HTML を出力する。"""
+    if len(markdown_paths) != len(QUESTION_SETS):
+        raise SystemExit(__doc__)
     css = CSS_PATH.read_text(encoding="utf-8")
-    for template_name, output_name in TEMPLATES.items():
-        output = OUT_DIR / output_name
-        output.write_text(render(template_name, data, css), encoding="utf-8")
-        print(f"生成: {output}")
+    glossary = load_glossary()
+    first_set_domains: list[dict] = []
+    for config, path in zip(QUESTION_SETS, markdown_paths):
+        data = parse_question_set(path)
+        data["glossary"] = glossary
+        data["meta"] = asdict(config)
+        first_set_domains = first_set_domains or data["domains"]
+        write_output(config.output, render(EXAM_TEMPLATE, data, css))
+    glossary_data = {"domains": first_set_domains, "glossary": glossary}
+    write_output(
+        GLOSSARY_OUTPUT, render(GLOSSARY_TEMPLATE, glossary_data, css)
+    )
 
 
 if __name__ == "__main__":
-    main(Path(sys.argv[1]))
+    main([Path(arg) for arg in sys.argv[1:]])
